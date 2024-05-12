@@ -1,0 +1,5 @@
+# Ignore files
+/config.php
+/scripts/getCurrentTempConfig.ps1
+/scripts/test*
+/scripts/TEMPerX/

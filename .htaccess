@@ -1,0 +1,3 @@
+RedirectMatch 403 ^/scripts/.*$
+RedirectMatch 403 ^/.gitattributes$
+RedirectMatch 403 ^/.gitignore$
