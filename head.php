@@ -3,19 +3,21 @@
 	include_once("config.php");
 	include_once("functions.php");
 
-	if (isset($_COOKIE['username']) && isset($_COOKIE['password'])) {
-		if (!($_COOKIE['password'] === md5($logins[$_COOKIE['username']]))) {
+	if ($require_login) {
+		if (isset($_COOKIE['username']) && isset($_COOKIE['password'])) {
+			if (!($_COOKIE['password'] === md5($logins[$_COOKIE['username']]))) {
+				redirect("login.php?ruri=".urlencode($_SERVER["REQUEST_URI"]));
+			}
+		} else {
 			redirect("login.php?ruri=".urlencode($_SERVER["REQUEST_URI"]));
 		}
-	} else {
-		redirect("login.php?ruri=".urlencode($_SERVER["REQUEST_URI"]));
 	}
 
 	echo "
 <!DOCTYPE html> 
 <html>
 <head>
-<title>Padlás Hőmérséklet Monitor</title>
+<title>Hőmérséklet Monitor</title>
 <meta http-equiv='Content-Type' content='text/html; charset=UTF-8'>
 <meta http-equiv='Content-Style-Type' content='text/css'>
 <meta name='viewport' content='width=device-width, initial-scale=1.0'>
@@ -91,7 +93,7 @@
 <body>
 
 <div class='header'>
-	<h1>Padlás Hőmérséklet Monitor</h1>
+	<h1>Hőmérséklet Monitor</h1>
 </div>
 
 <div class='wrapper'>";

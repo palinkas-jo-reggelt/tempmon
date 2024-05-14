@@ -22,7 +22,7 @@
 	Depending on your device, you may have to change the way Powershell reads the CSV output. 
 	
 	CSV output is comma separated. For temperature only models, the temperature comes second as so:
-	$AtticTemp = [math]::Round(((Get-Content -Path $AtticTempCSV | Select -Last 1).Split(",")[1] -Replace "[^0-9-.]",""),1)
+	$InsideTemp = [math]::Round(((Get-Content -Path $InsideTempCSV | Select -Last 1).Split(",")[1] -Replace "[^0-9-.]",""),1)
 	
 	Note "Split(",")[1]" which is the temperature reading in the CSV - humidity or outside temperature could be a different iteration. Change the iterator if that's the case.
 
@@ -54,7 +54,7 @@ Function SendSMS($Num, $Msg) {
 		$SentMsg = Invoke-WebRequest $URL -Method Post -Credential $Credential -Body $Params -UseBasicParsing | ConvertFrom-Json
 	}
 	Catch {
-		Write-Output "$(Get-Date -f G) : Error : $($Error[0])" | Out-File "$PSScriptRoot\SendError.log" -Append -Encoding ASCII
+		Write-Output "$(Get-Date -f G) : Error : $($Error[0])" | Out-File "$PSScriptRoot\Error.log" -Append -Encoding ASCII
 	}
 }
 #>
@@ -69,13 +69,11 @@ Function SendEmail ($Email, $Msg){
 		$SMTP.Send($Message)
 	}
 	Catch {
-		Debug "Email ERROR : $($Error[0])"
+		Write-Output "Email ERROR : $($Error[0])" | Out-File "$PSScriptRoot\Error.log" -Append -Encoding ASCII
 	}
 }
 
 Function MySQLQuery($Query) {
-	$Today = (Get-Date).ToString("yyyyMMdd")
-	$DBErrorLog = "$PSScriptRoot\$Today-DBError.log"
 	$ConnectionString = "server=" + $SQLHost + ";port=" + $SQLPort + ";uid=" + $SQLAdminUserName + ";pwd=" + $SQLAdminPassword + ";database=" + $SQLDatabase + ";SslMode=" + $SQLSSL + ";Default Command Timeout=" + $SQLCommandTimeOut + ";Connect Timeout=" + $SQLConnectTimeout + ";"
 	Try {
 		[void][System.Reflection.Assembly]::LoadWithPartialName("MySql.Data")
@@ -89,8 +87,8 @@ Function MySQLQuery($Query) {
 		$DataSet.Tables[0]
 	}
 	Catch {
-		Write-Output "$(Get-Date -f G) : ERROR : Unable to run query : $Query" | Out-File $DBErrorLog -append
-		Write-Output "$(Get-Date -f G) : ERROR : $($Error[0])" | Out-File $DBErrorLog -append
+		Write-Output "$(Get-Date -f G) : ERROR : Unable to run query : $Query" | Out-File "$PSScriptRoot\Error.log" -Append -Encoding ASCII
+		Write-Output "$(Get-Date -f G) : ERROR : $($Error[0])" | Out-File "$PSScriptRoot\Error.log" -Append -Encoding ASCII
 	}
 	Finally {
 		$Connection.Close()
@@ -98,24 +96,42 @@ Function MySQLQuery($Query) {
 }
 
 <#  Get outside temperature from API  #>
-$URL = "https://api.open-meteo.com/v1/forecast?latitude=" + $Latitude + "&longitude=" + $Longitude + "&current=temperature_2m&timezone=" + [uri]::EscapeDataString($PHPTimezone) + "&forecast_days=1"
-$Weather = Invoke-WebRequest $URL -Method Get -UseBasicParsing | ConvertFrom-Json
+$URL = "https://api.open-meteo.com/v1/forecast?latitude=" + $Latitude + "&longitude=" + $Longitude + "&current=temperature_2m&timezone=" + [uri]::EscapeDataString($PHPTimezone)
+$Start = Get-Date
+Do {
+	Try {
+		$Request = Invoke-WebRequest $URL -Method Get -UseBasicParsing
+		$OutsideTemp = ($Request | ConvertFrom-Json).current.temperature_2m
+		$StatusCode = $Request | Select-Object -Expand StatusCode
+	}
+	Catch {Start-Sleep -Seconds 10}
+} Until (($StatusCode -eq 200) -or ((New-Timespan $Start).TotalMinutes -gt 5))
 
 <#  Get attic temperature from CSV  #>
-$AtticTemp = [math]::Round(((Get-Content -Path $AtticTempCSV | Select -Last 1).Split(",")[1] -Replace "[^0-9-.]",""),1)
+$InsideTemp = [math]::Round(((Get-Content -Path $InsideTempCSV | Select -Last 1).Split(",")[1] -Replace "[^0-9-.]",""),1)
 
 <#  Warn if no data  #>
-If (!$AtticTemp) {
-	$Msg = "Warning: Attic Temperature Monitor failed to read data!"
+If (!$OutsideTemp) {
+	$Msg = "Warning: Temperature Monitor failed to read OUTSIDE data!"
 	ForEach ($Key in $Recip.Keys) {
 		If ($UseSMS) {SendSMS $($Recip[$Key]) $Msg}
 		If ($UseEmail) {SendEmail $Key $Msg}
 	}
+	Write-Output "$(Get-Date -f G) : ERROR : $Msg" | Out-File "$PSScriptRoot\Error.log" -Append -Encoding ASCII
+}
+
+If (!$InsideTemp) {
+	$Msg = "Warning: Temperature Monitor failed to read INSIDE data!"
+	ForEach ($Key in $Recip.Keys) {
+		If ($UseSMS) {SendSMS $($Recip[$Key]) $Msg}
+		If ($UseEmail) {SendEmail $Key $Msg}
+	}
+	Write-Output "$(Get-Date -f G) : ERROR : $Msg" | Out-File "$PSScriptRoot\Error.log" -Append -Encoding ASCII
 }
 
 <#  Send High Temperature Warning  #>
-If ([Int]$AtticTemp -ge $WarningTemp) {
-	$Msg = "Warning: High Attic Temperature: Currently $AtticTemp degrees!"
+If ([Int]$InsideTemp -ge $WarningTemp) {
+	$Msg = "Warning: High Attic Temperature: Currently $InsideTemp degrees!"
 	ForEach ($Key in $Recip.Keys) {
 		If ($UseSMS) {SendSMS $($Recip[$Key]) $Msg}
 		If ($UseEmail) {SendEmail $Key $Msg}
@@ -131,10 +147,10 @@ $Query = "
 	INSERT INTO temp (time, inside, outside)
 	VALUES (
 		'$DateTime',
-		'$AtticTemp',
-		'$($Weather.current.temperature_2m)'
+		'$InsideTemp',
+		'$OutsideTemp'
 	);"
 MySQLQuery $Query
 
 <#  Clear CSV  #>
-Clear-Content -Path $AtticTempCSV -Force
+Clear-Content -Path $InsideTempCSV -Force

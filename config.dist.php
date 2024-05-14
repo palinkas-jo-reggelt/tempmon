@@ -1,18 +1,18 @@
 <?php
 
-	// Login usernames and passwords
-	$logins = array(
+	// Login variables
+	$require_login          = false; // Require username/password login to view page
+	$cookie_duration        = 90;    // Cookie duration in days
+	$logins = array(                 // Array of usernames => passwords
 		'admin'  => '123456',
 		'arpi'   => '654321',
 		'fanni'  => '12foo34'
 	);
 
-	// Cookie duration in days
-	$cookie_duration        = 90;
-
 	// Data smoothing by rolling average - setting very high will flatten the curves. 
-	$smoothingIterations    = 10;	// Number of data points as percentage of total data points to use in rolling average smoothing
-	$constrain_n            = 3;    // maximum number of data points to use in smoothing function - set to 0 for no smoothing
+	$smoothingIterations    = 10;	 // Number of data points as percentage of total data points to use in rolling average smoothing
+	$constrain_n            = 3;     // Maximum number of data points to use in smoothing function - set to 0 for no smoothing
+	$showResults            = false; // Show results of smoothing below chart - useful for debugging
 
 /*	Database Variables 
 

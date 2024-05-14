@@ -72,23 +72,25 @@
 		$oneyearsel = "";
 		$useHours = true;
 	}
-	if (isset($_POST['showResults'])) {
-		if ($_POST['showResults'] == 1) {
-			$showResults = true;
-			$showResultsChecked = "checked";
+	if (isset($_POST['trendline'])) {
+		if ($_POST['trendline'] == 1) {
+			$trendline = true;
+			$trendlineChecked = "checked";
 		} else {
-			$showResults = false;
-			$showResultsChecked = "";
+			$trendline = false;
+			$trendlineChecked = "";
 		}
 	} else {
-		$showResults = false;
-		$showResultsChecked = "";
+		$trendline = false;
+		$trendlineChecked = "";
 	}
 
 	// Get chart data
 	$labelsArr = array();
 	$insideArr = array();
 	$outsideArr = array();
+	$iterateArr = array();
+	$iterate = 1;
 
 	$main_graph_sql = $pdo->prepare($getData_sql);
 	$main_graph_sql->execute();
@@ -99,17 +101,46 @@
 			} else {
 				array_push($labelsArr, "'".date_format(date_create($row['time']),"H")."'");
 			}
-			if ($row['inside'] == -100) {array_push($insideArr, $row['outside']);} else {array_push($insideArr, $row['inside']);}
+			array_push($insideArr, $row['inside']);
 			array_push($outsideArr, $row['outside']);
+			array_push($iterateArr, $iterate);
+			$iterate++;
 		} else {
 			if (substr($row['time'],8,2) === "01") {
 				array_push($labelsArr, "['".date_format(date_create($row['time']),"j")."', '".date_format(date_create($row['time']),"M Y")."']");
 			} else {
 				array_push($labelsArr, "'".date_format(date_create($row['time']),"j")."'");
 			}
-			if ($row['inside'] == -100) {array_push($insideArr, $row['outside']);} else {array_push($insideArr, $row['inside']);}
+			array_push($insideArr, $row['inside']);
 			array_push($outsideArr, $row['outside']);
+			array_push($iterateArr, $iterate);
+			$iterate++;
 		}
+	}
+
+	// Smooth data
+	$smoothedInside = smooth_array($insideArr);
+	$smoothedOutside = smooth_array($outsideArr);
+
+	// Make trendlines
+	if ($trendline) {
+		// Inside trendline
+		$trendArrInside = linear_regression($iterateArr, $insideArr);
+		$trendlineArrInside = array();
+		for ($j = 0; $j < count($insideArr); $j++) {
+			$number = ($trendArrInside['slope'] * $iterateArr[$j]) + $trendArrInside['intercept'];
+			array_push($trendlineArrInside, $number);
+		}
+		// Outside trendline
+		$trendArrOutside = linear_regression($iterateArr, $outsideArr);
+		$trendlineArrOutside = array();
+		for ($j = 0; $j < count($outsideArr); $j++) {
+			$number = ($trendArrOutside['slope'] * $iterateArr[$j]) + $trendArrOutside['intercept'];
+			array_push($trendlineArrOutside, $number);
+		}
+		$avgTrendInside = round(array_sum($trendlineArrInside) / count($trendlineArrInside),0);
+		$avgTrendOutside = round(array_sum($trendlineArrOutside) / count($trendlineArrOutside),0);
+		$tempDelta = $avgTrendInside - $avgTrendOutside;
 	}
 
 	// Get current temp for table
@@ -129,12 +160,8 @@
 		$maxTempInside = round($row['maxin'],0);
 		$maxTempOutside = round($row['maxout'],0);
 	}
-	
-	// Smooth data
-	$smoothedInside = smooth_array($insideArr);
-	$smoothedOutside = smooth_array($outsideArr);
 
-	// Min/Max temps for scale
+	// Get min/max temps for scale
 	$minMaxArr = array_merge($smoothedInside[0],$smoothedOutside[0]);
 	if (round(min_temp($minMaxArr),0) % 2 == 0) {
 		$minTemp = round(min_temp($minMaxArr),0) - 2;
@@ -150,7 +177,7 @@
 	// Scale label
 	if ($useHours) {$titleText = "Óra";} else {$titleText = "Dátum";}
 
-	// Graph selector
+	// Graph options form
 	echo "
 	<div class='section'>
 		<center>
@@ -173,13 +200,13 @@
 			<div class='clear'></div>
 
 			<div class='inputleft'>
-				Adat
+				Trendvonal
 			</div>
 			<div class='inputright'>
 				<div class='onoffswitch'>
-					<input type='hidden' name='showResults' value='0'>
-					<input type='checkbox' name='showResults' class='onoffswitch-checkbox' id='showResultsswitch' value='1'  onchange='submit();' ".$showResultsChecked.">
-					<label class='onoffswitch-label' for='showResultsswitch'>
+					<input type='hidden' name='trendline' value='0'>
+					<input type='checkbox' name='trendline' class='onoffswitch-checkbox' id='trendlineswitch' value='1'  onchange='submit();' ".$trendlineChecked.">
+					<label class='onoffswitch-label' for='trendlineswitch'>
 						<div class='onoffswitch-inner'></div>
 						<div class='onoffswitch-switch'></div>
 					</label>
@@ -191,7 +218,7 @@
 		</center>
 	</div>";
 
-	// Temp Chart
+	// Graph canvas
 	echo "
 	<div class='section'>
 		<div class='chartcanvas' style='height:55vh;'>
@@ -204,44 +231,46 @@
 	<div class='section'>
 		<div class='table'>
 			<div class='row bold center'>
-				<div class='col'>&nbsp;</div>
-				<div class='col'>Padlás</div>
+				<div class='col right'>&nbsp;</div>
+				<div class='col'>Belül</div>
 				<div class='col'>Külső</div>
 			</div>
 			<div class='row'>
-				<div class='col borl bort borb yellow bold'>Jelenlegi:</div>
+				<div class='col borl bort borb yellow bold right'>Jelenlegi:</div>
 				<div class='col center bort borb red bold'>".$currTempInside." \u{00B0}</div>
 				<div class='col center bort borr borb blue bold'>".$currTempOutside." \u{00B0}</div>
 			</div>
 			<div class='row'>
-				<div class='col'>Minimális:</div>
+				<div class='col right'>Minimális:</div>
 				<div class='col center'>".$minTempInside." \u{00B0}</div>
 				<div class='col center'>".$minTempOutside." \u{00B0}</div>
 			</div>
 			<div class='row'>
-				<div class='col'>Maximális:</div>
+				<div class='col right'>Maximális:</div>
 				<div class='col center'>".$maxTempInside." \u{00B0}</div>
 				<div class='col center'>".$maxTempOutside." \u{00B0}</div>
+			</div>";
+	if ($trendline) {
+		echo "
+			<div class='row'>
+				<div class='col right'>Trend Átlag:</div>
+				<div class='col center'>".$avgTrendInside." \u{00B0}</div>
+				<div class='col center'>".$avgTrendOutside." \u{00B0}</div>
 			</div>
+			<div class='row'>
+				<div class='col right'>\u{394}&nbsp;</div>
+				<div class='col center'>".$tempDelta." \u{00B0}</div>
+				<div class='col center'>&nbsp;</div>
+			</div>";
+	}
+	echo "
 		</div>
 	</div>";
 
-	// Show results 
-	echo "
-	<div class='section'>
-		<!--form action='".$_SERVER["REQUEST_URI"]."' method='POST'>
-			<div class='onoffswitch'>
-				<input type='hidden' name='showResults' value='0'>
-				<input type='checkbox' name='showResults' class='onoffswitch-checkbox' id='showResultsswitch' value='1'  onchange='submit();' ".$showResultsChecked.">
-				<label class='onoffswitch-label' for='showResultsswitch'>
-					<div class='onoffswitch-inner'></div>
-					<div class='onoffswitch-switch'></div>
-				</label>
-			</div>
-		</form-->";
-
+	// Show data 
 	if ($showResults) {
 		echo "
+	<div class='section'>
 		<div class='results'>
 			<pre>Smoothed Data<pre>
 			<pre>Inside</pre>";
@@ -259,7 +288,7 @@
 	echo "
 	</div>";
 
-	// Start chart script
+	// Chart script
 	echo "
 	<script>
 		new Chart('main_graph', {
@@ -268,7 +297,7 @@
 				labels: [".implode(",",$labelsArr)."],
 				datasets: [
 					{
-						label: 'Padlás',
+						label: 'Belül',
 						data: [".implode(",",$smoothedInside[0])."],
 						backgroundColor: 'red',
 						borderColor: 'red',
@@ -280,7 +309,23 @@
 						backgroundColor: 'blue',
 						borderColor: 'blue',
 						tension: 0.1,
+					},";
+	if ($trendline) {
+		echo "
+					{
+						label: 'trend',
+						data: [".implode(",",$trendlineArrInside)."],
+						backgroundColor: 'red',
+						borderColor: 'red',
 					},
+					{
+						label: 'trend',
+						data: [".implode(",",$trendlineArrOutside)."], 
+						backgroundColor: 'blue',
+						borderColor: 'blue',
+					},";
+	}
+	echo "
 				]
 			},
 			options: {
@@ -331,6 +376,9 @@
 				maintainAspectRatio: false,
 				plugins: {
 					legend: {
+						labels: {
+							filter: item => item.text !== 'trend'
+						},
 						display: true,
 						position: 'top',
 					}

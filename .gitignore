@@ -3,3 +3,4 @@
 /scripts/getCurrentTempConfig.ps1
 /scripts/test*
 /scripts/TEMPerX/
+/scripts/Error.log

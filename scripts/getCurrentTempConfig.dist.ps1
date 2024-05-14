@@ -29,7 +29,7 @@
 #>
 
 ###   SCRIPT VARIABLES   ###
-$AtticTempCSV       = "C:\scripts\TEMPerX\1.csv"      # Path to USB thermometer output CSV
+$InsideTempCSV      = "C:\scripts\TEMPerX\1.csv"      # Path to USB thermometer output CSV
 $Latitude           = "47.5073"                       # Required for open-meteo.com weather API
 $Longitude          = "21.6494"                       # Required for open-meteo.com weather API
 $PHPTimeZone        = "Europe/Budapest"               # Required for open-meteo.com weather API - https://www.php.net/manual/en/timezones.php
@@ -57,7 +57,7 @@ $SMTPPort           =  587
 $SSL                = $True                           # If true, will use tls connection to send email
 
 ###   MYSQL VARIABLES   ###
-$SQLAdminUserName   = '|'
+$SQLAdminUserName   = 'tempmonitorUsername'
 $SQLAdminPassword   = 'supersecretpassword'
 $SQLDatabase        = 'tempmonitorDBname'
 $SQLHost            = 'localhost'
